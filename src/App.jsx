@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
+const API_BASE_URL = "https://shopify-klara-sync-backend.onrender.com";
 
 function App() {
   // Demo-State – später mit echten API-Daten ersetzen
@@ -333,3 +335,4 @@ function App() {
 }
 
 export default App;
+
