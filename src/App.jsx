@@ -3,7 +3,10 @@ import React, { useState, useEffect } from "react";
 const API_BASE_URL = "https://shopify-klara-sync-backend.onrender.com";
 
 function App() {
-  // --- STATE ---
+  // Heutiges Datum als Startwert für Auswahl
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const [selectedDate, setSelectedDate] = useState(todayStr);
 
   const [today, setToday] = useState({
     date: "",
@@ -26,14 +29,16 @@ function App() {
     lastSent: null
   });
 
-  // --- API-DATEN LADEN BEIM START ---
+  // --- API-DATEN LADEN WENN DATUM SICH ÄNDERT ---
 
   useEffect(() => {
-    async function loadToday() {
+    async function loadSelectedDay() {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/today`);
+        const res = await fetch(
+          `${API_BASE_URL}/api/day/${selectedDate}`
+        );
         if (!res.ok) {
-          console.error("Fehler beim Laden von /api/today");
+          console.error("Fehler beim Laden von /api/day", selectedDate);
           return;
         }
         const data = await res.json();
@@ -46,7 +51,7 @@ function App() {
           Gutscheine: data.gutscheine
         }));
       } catch (err) {
-        console.error("Fehler (Netzwerk / today):", err);
+        console.error("Fehler (Netzwerk / day):", err);
       }
     }
 
@@ -64,9 +69,11 @@ function App() {
       }
     }
 
-    loadToday();
+    if (selectedDate) {
+      loadSelectedDay();
+    }
     loadOpenDays();
-  }, []);
+  }, [selectedDate]);
 
   // --- HANDLER ---
 
@@ -77,7 +84,7 @@ function App() {
         { method: "POST" }
       );
       if (!res.ok) {
-        console.error("Fehler beim Senden an Klara (heute)");
+        console.error("Fehler beim Senden an Klara (ausgewählter Tag)");
         return;
       }
       const data = await res.json();
@@ -87,11 +94,10 @@ function App() {
           status: "sent",
           lastSyncTime: new Date().toLocaleTimeString()
         }));
-        // Heute ggf. auch aus offenen Tagen entfernen
         setOpenDays(prev => prev.filter(d => d.date !== today.date));
       }
     } catch (err) {
-      console.error("Netzwerkfehler beim Senden (heute):", err);
+      console.error("Netzwerkfehler beim Senden:", err);
     }
   };
 
@@ -119,7 +125,6 @@ function App() {
   };
 
   const handleToggleLiveMode = () => {
-    // aktuell nur optisch, später kann das Backend informiert werden
     setLiveMode(prev => !prev);
   };
 
@@ -168,7 +173,7 @@ function App() {
     }
   };
 
-  // --- HILFSFUNKTIONEN FÜR ANZEIGE ---
+  // --- HILFSFUNKTIONEN ---
 
   const formatCurrency = value =>
     new Intl.NumberFormat("de-CH", {
@@ -210,13 +215,13 @@ function App() {
           </p>
         </header>
 
-        {/* HEUTE */}
+        {/* AUSGEWÄHLTER TAG */}
         <section className="mb-5">
           <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-4">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h2 className="text-sm font-semibold text-emerald-900">
-                  Heute
+                  Ausgewählter Tag
                 </h2>
                 <p className="text-xs text-emerald-700">
                   {today.date || "–"}
@@ -230,6 +235,19 @@ function App() {
               >
                 {statusLabel(today.status)}
               </span>
+            </div>
+
+            {/* Datumsauswahl */}
+            <div className="mb-3">
+              <label className="block text-xs text-emerald-700 mb-1">
+                Datum wählen
+              </label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={e => setSelectedDate(e.target.value)}
+                className="w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm text-emerald-900 bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3 mt-2 text-sm">
