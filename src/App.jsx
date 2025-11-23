@@ -3,21 +3,18 @@ import React, { useState, useEffect } from "react";
 const API_BASE_URL = "https://shopify-klara-sync-backend.onrender.com";
 
 function App() {
-  // Demo-State – später mit echten API-Daten ersetzen
+  // --- STATE ---
+
   const [today, setToday] = useState({
-    date: "2026-01-05",
+    date: "",
     status: "prepared", // "sent" | "prepared" | "error"
-    UmsatzBrutto: 780.0,
-    Mwst: 58.43,
-    Gutscheine: 200.0,
+    UmsatzBrutto: 0,
+    Mwst: 0,
+    Gutscheine: 0,
     lastSyncTime: "Noch nicht gesendet"
   });
 
-  const [openDays, setOpenDays] = useState([
-    { date: "2026-01-04", status: "prepared" },
-    { date: "2026-01-03", status: "error" }
-  ]);
-
+  const [openDays, setOpenDays] = useState([]);
   const [liveMode, setLiveMode] = useState(true);
 
   const [import2025Status, setImport2025Status] = useState({
@@ -29,59 +26,155 @@ function App() {
     lastSent: null
   });
 
-  // --- Handler (TODO: später mit Backend verbinden) ---
+  // --- API-DATEN LADEN BEIM START ---
 
-  const handleSendTodayToKlara = () => {
-    // TODO: API-Call zu deiner Middleware
-    setToday(prev => ({
-      ...prev,
-      status: "sent",
-      lastSyncTime: new Date().toLocaleTimeString()
-    }));
+  useEffect(() => {
+    async function loadToday() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/today`);
+        if (!res.ok) {
+          console.error("Fehler beim Laden von /api/today");
+          return;
+        }
+        const data = await res.json();
+        setToday(prev => ({
+          ...prev,
+          date: data.date,
+          status: data.status,
+          UmsatzBrutto: data.umsatz_brutto,
+          Mwst: data.mwst,
+          Gutscheine: data.gutscheine
+        }));
+      } catch (err) {
+        console.error("Fehler (Netzwerk / today):", err);
+      }
+    }
+
+    async function loadOpenDays() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/open-days`);
+        if (!res.ok) {
+          console.error("Fehler beim Laden von /api/open-days");
+          return;
+        }
+        const data = await res.json();
+        setOpenDays(data);
+      } catch (err) {
+        console.error("Fehler (Netzwerk / open-days):", err);
+      }
+    }
+
+    loadToday();
+    loadOpenDays();
+  }, []);
+
+  // --- HANDLER ---
+
+  const handleSendTodayToKlara = async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/day/${today.date}/send`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        console.error("Fehler beim Senden an Klara (heute)");
+        return;
+      }
+      const data = await res.json();
+      if (data.ok) {
+        setToday(prev => ({
+          ...prev,
+          status: "sent",
+          lastSyncTime: new Date().toLocaleTimeString()
+        }));
+        // Heute ggf. auch aus offenen Tagen entfernen
+        setOpenDays(prev => prev.filter(d => d.date !== today.date));
+      }
+    } catch (err) {
+      console.error("Netzwerkfehler beim Senden (heute):", err);
+    }
   };
 
-  const handleResendDay = date => {
-    // TODO: API-Call für diesen Tag
-    setOpenDays(prev => prev.filter(d => d.date !== date));
+  const handleResendDay = async date => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/day/${date}/send`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        console.error(`Fehler beim erneuten Senden für ${date}`);
+        return;
+      }
+      const data = await res.json();
+      if (data.ok) {
+        setOpenDays(prev => prev.filter(d => d.date !== date));
+      }
+    } catch (err) {
+      console.error("Netzwerkfehler beim erneuten Senden:", err);
+    }
   };
 
   const handleIgnoreDay = date => {
-    // TODO: optional loggen
     setOpenDays(prev => prev.filter(d => d.date !== date));
   };
 
   const handleToggleLiveMode = () => {
-    // TODO: Backend über neuen Status informieren
+    // aktuell nur optisch, später kann das Backend informiert werden
     setLiveMode(prev => !prev);
   };
 
-  const handleImport2025 = () => {
-    // TODO: Shopify 2025 auslesen & Summen berechnen
-    setImport2025Status({
-      hasRun: true,
-      daysTotal: 365,
-      daysWithRevenue: 241,
-      daysWithoutRevenue: 124,
-      lastRun: new Date().toLocaleString(),
-      lastSent: import2025Status.lastSent
-    });
+  const handleImport2025 = async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/import/2025/run`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        console.error("Fehler bei /api/import/2025/run");
+        return;
+      }
+      const data = await res.json();
+      setImport2025Status({
+        hasRun: true,
+        daysTotal: data.days_total,
+        daysWithRevenue: data.days_with_revenue,
+        daysWithoutRevenue: data.days_without_revenue,
+        lastRun: data.last_run,
+        lastSent: import2025Status.lastSent
+      });
+    } catch (err) {
+      console.error("Netzwerkfehler beim Import 2025:", err);
+    }
   };
 
-  const handleSend2025ToKlara = () => {
-    // TODO: Buchungen 2025 an Klara senden
-    setImport2025Status(prev => ({
-      ...prev,
-      lastSent: new Date().toLocaleString()
-    }));
+  const handleSend2025ToKlara = async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/import/2025/send`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        console.error("Fehler bei /api/import/2025/send");
+        return;
+      }
+      const data = await res.json();
+      console.log("Antwort von /import/2025/send:", data);
+      setImport2025Status(prev => ({
+        ...prev,
+        lastSent: new Date().toLocaleString()
+      }));
+    } catch (err) {
+      console.error("Netzwerkfehler beim Senden 2025:", err);
+    }
   };
 
-  // --- Anzeige-Helfer ---
+  // --- HILFSFUNKTIONEN FÜR ANZEIGE ---
 
   const formatCurrency = value =>
     new Intl.NumberFormat("de-CH", {
       style: "currency",
       currency: "CHF"
-    }).format(value);
+    }).format(value ?? 0);
 
   const statusColor = status => {
     if (status === "sent") return "bg-emerald-100 text-emerald-800";
@@ -96,6 +189,8 @@ function App() {
     if (status === "error") return "Fehler beim Senden";
     return "Unbekannter Status";
   };
+
+  // --- UI ---
 
   return (
     <div className="min-h-screen bg-emerald-50 flex justify-center">
@@ -123,7 +218,9 @@ function App() {
                 <h2 className="text-sm font-semibold text-emerald-900">
                   Heute
                 </h2>
-                <p className="text-xs text-emerald-700">{today.date}</p>
+                <p className="text-xs text-emerald-700">
+                  {today.date || "–"}
+                </p>
               </div>
               <span
                 className={
@@ -279,14 +376,19 @@ function App() {
               {import2025Status.hasRun && (
                 <>
                   <p>Tage insgesamt: {import2025Status.daysTotal}</p>
-                  <p>Tage mit Umsatz: {import2025Status.daysWithRevenue}</p>
                   <p>
-                    Tage ohne Umsatz: {import2025Status.daysWithoutRevenue}
+                    Tage mit Umsatz:{" "}
+                    {import2025Status.daysWithRevenue}
+                  </p>
+                  <p>
+                    Tage ohne Umsatz:{" "}
+                    {import2025Status.daysWithoutRevenue}
                   </p>
                   <p>Letzter Importlauf: {import2025Status.lastRun}</p>
                   {import2025Status.lastSent && (
                     <p>
-                      Zuletzt an Klara gesendet: {import2025Status.lastSent}
+                      Zuletzt an Klara gesendet:{" "}
+                      {import2025Status.lastSent}
                     </p>
                   )}
                 </>
@@ -335,4 +437,3 @@ function App() {
 }
 
 export default App;
-
